@@ -1,31 +1,55 @@
 name: CodeQL
-# OWNER ACTION REQUIRED before enabling auto-triggers: advanced CodeQL conflicts with
-# GitHub "default setup" — the analyze step fails with "CodeQL analyses from advanced
-# configurations cannot be processed when the default setup is enabled". Switch repo
-# Settings → Code security → CodeQL from Default to Advanced, THEN restore the
-# push/pull_request/schedule triggers below. Until then this only runs on manual dispatch
-# so it never produces a red check on PRs. (The codeqlAlerts ratchet keeps working via the
-# default setup's alerts in the meantime.)
+
 on:
+  push:
+    branches:
+      - release/v3.8.51
+  pull_request:
+    branches:
+      - release/v3.8.51
+  schedule:
+    - cron: "31 4 * * 1"
   workflow_dispatch:
+
 permissions:
+  actions: read
   contents: read
+  packages: read
+  security-events: write
+
 jobs:
   analyze:
-    name: Analyze (javascript-typescript)
+    name: Analyze (${{ matrix.language }})
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
-    permissions:
-      security-events: write
-      actions: read
-      contents: read
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: actions
+            build-mode: none
+          - language: javascript-typescript
+            build-mode: none
+          - language: python
+            build-mode: none
+
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
         with:
-          persist-credentials: false
-      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          config: |
+            queries:
+              - uses: security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
         with:
-          languages: javascript-typescript
-          queries: security-extended
-      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
-        with:
-          category: "/language:javascript-typescript"
+          category: /language:${{ matrix.language }}
